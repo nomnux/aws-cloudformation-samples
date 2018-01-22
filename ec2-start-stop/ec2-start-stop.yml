@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: EC2 Auto Starting/Stopping CloudWatch Events
+
+Parameters:
+  Ec2InstanceIds:
+    Type: String
+    Default: |
+      "i-*****","i-*****"
+  CronStartUtc:
+    Type: String
+    Default: 0 9 * * ? *
+  CronStopUtc:
+    Type: String
+    Default: 0 17 * * ? *
+
+
+Resources:
+
+  CloudWatchEventsStartEc2Instance:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${AWS::StackName}-start-ec2instance
+      ScheduleExpressio: !Sub cron(${CronStartUtc})
+      State: ENABLED
+      Targets:
+        # https://docs.aws.amazon.com/AmazonCloudWatchEvents/latest/APIReference/API_PutTargets.html
+        - Id: start-ec2instance
+          Arn: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/AWS-StartEC2Instance:$DEFAULT
+          Input: !Sub
+            - |
+              {
+                "InstanceId": [${InstanceIds}],
+                "AutomationAssumeRole": ["${RoleArn}"]
+              }
+            - {
+                InstanceIds: !Ref Ec2InstanceIds,
+                RoleArn: !GetAtt [ IamRoleSsm, Arn ]
+              }
+          RoleArn: !GetAtt [ IamRoleCloudwatchEvents, Arn ]
+
+  CloudWatchEventsStopEc2Instance:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${AWS::StackName}-stop-ec2instance
+      ScheduleExpression: !Sub cron(${CronStopUtc})
+      State: ENABLED
+      Targets:
+        - Id: stop-ec2instance
+          Arn: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/AWS-StopEC2Instance:$DEFAULT
+          Input: !Sub
+            - |
+              {
+                "InstanceId": [${InstanceIds}],
+                "AutomationAssumeRole": ["${RoleArn}"] }
+            - {
+                InstanceIds: !Ref Ec2InstanceIds,
+                RoleArn: !GetAtt [ IamRoleSsm, Arn ]
+              }
+          RoleArn: !GetAtt [ IamRoleCloudwatchEvents, Arn ]
+
+  IamRoleSsm:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-iam-role-ssm
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ssm.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: iam-plcy-ec2instance-operation
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstanceStatus
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                Resource: "*"
+
+  IamRoleCloudwatchEvents:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-iam-role-cloudwatchevents
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: iam-plcy-passrole
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:StartAutomationExecution
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/AWS-StartEC2Instance:$DEFAULT
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/AWS-StopEC2Instance:$DEFAULT
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/${AWS::StackName}-iam-role-ssm
+                Condition:
+                  StringLikeIfExists:
+                    "iam:PassedToService": ssm.amazonaws.com
