@@ -5,7 +5,7 @@ Parameters:
   Ec2InstanceIds:
     Type: String
     Default: |
-      "i-*****","i-*****"
+      "i-xxxxx","i-xxxxx"
   CronStartUtc:
     Type: String
     Default: 0 9 * * ? *
