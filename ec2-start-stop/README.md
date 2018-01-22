@@ -1,4 +1,4 @@
-# AWS EC2 Starting/Stopping CloudWatch Events
+# AWS EC2 Starting/Stopping CloudWatch Events template
 
 ## Description
 
